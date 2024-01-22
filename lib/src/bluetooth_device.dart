@@ -339,7 +339,7 @@ class BluetoothDevice {
     }
 
     // Only allow a single ble operation to be underway at a time
-    _Mutex mtx = _MutexFactory.getMutexForKey("global");
+    _Mutex mtx = _MutexFactory.getMutexForKey(Platform.isIOS ? "rssi" : "global");
     await mtx.take();
 
     int rssi = 0;
