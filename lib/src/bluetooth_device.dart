@@ -11,7 +11,7 @@ class BluetoothDevice {
     required this.remoteId,
   });
 
-  BluetoothDevice.fromProto(BmBluetoothDevice p) : remoteId = DeviceIdentifier(p.remoteId);
+  BluetoothDevice.fromProto(BmBluetoothDevice p) : remoteId = p.remoteId;
 
   /// Create a device from an id
   ///   - to connect, this device must have been discovered by your app in a previous scan
@@ -50,15 +50,20 @@ class BluetoothDevice {
   /// This function simplifies cleanup, to prevent creating duplicate stream subscriptions.
   ///   - this is an optional convenience function
   ///   - prevents accidentally creating duplicate subscriptions on each reconnection.
-  ///   - [next] if true, the the stream will be canceled only on the *next* disconnection.
-  ///     This is useful if you like to setup your subscriptions before you call connect.
-  void cancelWhenDisconnected(StreamSubscription subscription, {bool next = false}) {
-    if (isConnected == false && next == false) {
-      // cancel immediately if already disconnected.
+  ///   - [delayed] This option is only meant for `connectionState` streams. If true, we add
+  ///     add a small delay before we cancel the stream. This lets the `connectionState`
+  ///     listener to receive the `disconnected` event.
+  ///   - [immediately] if true & your device is already disconnected, the stream will be
+  ///     canceled immediately. If false, it will only be canceled on next disconnection.
+  void cancelWhenDisconnected(StreamSubscription subscription, {bool delayed = false, bool immediately = false}) {
+    if (isConnected == false && immediately) {
       subscription.cancel(); 
+    } else if (delayed) {
+      FlutterBluePlus._delayedSubscriptions[remoteId] ??= [];
+      FlutterBluePlus._delayedSubscriptions[remoteId]!.add(subscription);
     } else {
       FlutterBluePlus._deviceSubscriptions[remoteId] ??= [];
-      FlutterBluePlus._deviceSubscriptions[remoteId]!.add(subscription);
+      FlutterBluePlus._deviceSubscriptions[remoteId]!.add(subscription);      
     }
   }
 
@@ -105,7 +110,7 @@ class BluetoothDevice {
 
     try {
       var request = BmConnectRequest(
-        remoteId: remoteId.str,
+        remoteId: remoteId,
         autoConnect: autoConnect,
       );
 
@@ -113,7 +118,7 @@ class BluetoothDevice {
           .where((m) => m.method == "OnConnectionStateChanged")
           .map((m) => m.arguments)
           .map((args) => BmConnectionStateResponse.fromMap(args))
-          .where((p) => p.remoteId == remoteId.str);
+          .where((p) => p.remoteId == remoteId);
 
       // Start listening now, before invokeMethod, to ensure we don't miss the response
       Future<BmConnectionStateResponse> futureState = responseStream.first;
@@ -189,7 +194,7 @@ class BluetoothDevice {
           .where((m) => m.method == "OnConnectionStateChanged")
           .map((m) => m.arguments)
           .map((args) => BmConnectionStateResponse.fromMap(args))
-          .where((p) => p.remoteId == remoteId.str)
+          .where((p) => p.remoteId == remoteId)
           .where((p) => p.connectionState == BmConnectionStateEnum.disconnected);
 
       // Start listening now, before invokeMethod, to ensure we don't miss the response
@@ -232,7 +237,7 @@ class BluetoothDevice {
           .where((m) => m.method == "OnDiscoveredServices")
           .map((m) => m.arguments)
           .map((args) => BmDiscoverServicesResult.fromMap(args))
-          .where((p) => p.remoteId == remoteId.str);
+          .where((p) => p.remoteId == remoteId);
 
       // Start listening now, before invokeMethod, to ensure we don't miss the response
       Future<BmDiscoverServicesResult> futureResponse = responseStream.first;
@@ -292,7 +297,7 @@ class BluetoothDevice {
         .where((m) => m.method == "OnConnectionStateChanged")
         .map((m) => m.arguments)
         .map((args) => BmConnectionStateResponse.fromMap(args))
-        .where((p) => p.remoteId == remoteId.str)
+        .where((p) => p.remoteId == remoteId)
         .map((p) => _bmToConnectionState(p.connectionState))
         .newStreamWithInitialValue(initialValue);
   }
@@ -313,7 +318,7 @@ class BluetoothDevice {
         .where((m) => m.method == "OnMtuChanged")
         .map((m) => m.arguments)
         .map((args) => BmMtuChangedResponse.fromMap(args))
-        .where((p) => p.remoteId == remoteId.str)
+        .where((p) => p.remoteId == remoteId)
         .map((p) => p.mtu)
         .newStreamWithInitialValue(initialValue);
   }
@@ -326,7 +331,7 @@ class BluetoothDevice {
         .where((m) => m.method == "OnServicesReset")
         .map((m) => m.arguments)
         .map((args) => BmBluetoothDevice.fromMap(args))
-        .where((p) => p.remoteId == remoteId.str)
+        .where((p) => p.remoteId == remoteId)
         .map((m) => null);
   }
 
@@ -349,7 +354,7 @@ class BluetoothDevice {
           .where((m) => m.method == "OnReadRssi")
           .map((m) => m.arguments)
           .map((args) => BmReadRssiResult.fromMap(args))
-          .where((p) => (p.remoteId == remoteId.str));
+          .where((p) => (p.remoteId == remoteId));
 
       // Start listening now, before invokeMethod, to ensure we don't miss the response
       Future<BmReadRssiResult> futureResponse = responseStream.first;
@@ -419,7 +424,7 @@ class BluetoothDevice {
 
     try {
       var request = BmMtuChangeRequest(
-        remoteId: remoteId.str,
+        remoteId: remoteId,
         mtu: desiredMtu,
       );
 
@@ -427,7 +432,7 @@ class BluetoothDevice {
           .where((m) => m.method == "OnMtuChanged")
           .map((m) => m.arguments)
           .map((args) => BmMtuChangedResponse.fromMap(args))
-          .where((p) => p.remoteId == remoteId.str)
+          .where((p) => p.remoteId == remoteId)
           .map((p) => p.mtu);
 
       // Start listening now, before invokeMethod, to ensure we don't miss the response
@@ -463,7 +468,7 @@ class BluetoothDevice {
     }
 
     var request = BmConnectionPriorityRequest(
-      remoteId: remoteId.str,
+      remoteId: remoteId,
       connectionPriority: _bmFromConnectionPriority(connectionPriorityRequest),
     );
 
@@ -494,7 +499,7 @@ class BluetoothDevice {
     }
 
     var request = BmPreferredPhy(
-      remoteId: remoteId.str,
+      remoteId: remoteId,
       txPhy: txPhy,
       rxPhy: rxPhy,
       phyOptions: option.index,
@@ -527,7 +532,7 @@ class BluetoothDevice {
           .where((m) => m.method == "OnBondStateChanged")
           .map((m) => m.arguments)
           .map((args) => BmBondStateResponse.fromMap(args))
-          .where((p) => p.remoteId == remoteId.str)
+          .where((p) => p.remoteId == remoteId)
           .where((p) => p.bondState != BmBondStateEnum.bonding);
 
       // Start listening now, before invokeMethod, to ensure we don't miss the response
@@ -570,7 +575,7 @@ class BluetoothDevice {
           .where((m) => m.method == "OnBondStateChanged")
           .map((m) => m.arguments)
           .map((args) => BmBondStateResponse.fromMap(args))
-          .where((p) => p.remoteId == remoteId.str)
+          .where((p) => p.remoteId == remoteId)
           .where((p) => p.bondState != BmBondStateEnum.bonding);
 
       // Start listening now, before invokeMethod, to ensure we don't miss the response
@@ -637,7 +642,7 @@ class BluetoothDevice {
         .where((m) => m.method == "OnBondStateChanged")
         .map((m) => m.arguments)
         .map((args) => BmBondStateResponse.fromMap(args))
-        .where((p) => p.remoteId == remoteId.str)
+        .where((p) => p.remoteId == remoteId)
         .map((p) => _bmToBondState(p.bondState))
         .newStreamWithInitialValue(_bmToBondState(FlutterBluePlus._bondStates[remoteId]!.bondState));
   }
